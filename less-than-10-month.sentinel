@@ -1,0 +1,40 @@
+import "tfrun"
+import "tfplan"
+import "decimal"
+
+
+# Define the allowed RDS instance types
+allowed_rds_types = {
+  "db.t2.large": true,
+  "db.t3": true,
+}
+
+
+delta_monthly_cost = decimal.new(tfrun.cost_estimate.delta_monthly_cost)
+
+# Rule to check RDS instance types in the Terraform plan
+main = rule {
+  all tfplan.resources.aws_db_instance as _, instances {
+    all instances as _, instance {
+      # Ensure that the instance type is allowed
+      not is_allowed_rds_type(instance.applied.instance_type)
+    }
+  }
+}
+
+# Helper function to check if an RDS type is allowed
+is_allowed_rds_type = func(type) {
+  type_parts = split(".", type)
+  # Check if the first part of the type is allowed
+  first_part_allowed = allowed_rds_types[type_parts[0]] or false
+
+  # If it's t3, check if the second part (instance size) starts with "t3."
+  second_part_allowed = type_parts[0] == "db.t3" and type_parts[1] =~ "t3\\..*"
+
+  # If any part is allowed, return true
+  return first_part_allowed or second_part_allowed
+}
+
+main = rule {
+    delta_monthly_cost.less_than(10)
+}
